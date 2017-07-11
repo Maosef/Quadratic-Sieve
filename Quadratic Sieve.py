@@ -4,6 +4,7 @@ from Factor import brent
 from MillerRabin import is_probable_prime
 from operator import add
 from itertools import chain
+import sys
 
 def gcd(a,b): # Euclid's algorithm
     if b == 0:
@@ -105,7 +106,10 @@ def tonelli(n, p): #tonelli-shanks to solve modular square root
 
     return (r,p-r)
 
-
+def mprint(M): #prints a matrix
+    for row in M:
+        print(row)
+        
 def smooth_bound(N): # finds optimal smoothness bound B
     B = exp(0.5*pow(log(N*log(log(N))),0.5))
     return int(B)
@@ -125,21 +129,20 @@ def find_base(N,P):
             factor_base.append(p)
     return factor_base
 
-def sieve_prep(N,interval=100):
+def sieve_prep(N,sieve_int):
 # generates a sequence from Y(x) = x^2 - N, starting at x = ceil(sqrt(N)) 
     global sieve_seq
     sieve_seq = []
-    for x in range(root,root+interval):
+    for x in range(root,root+sieve_int):
         sieve_seq.append(pow(x,2) - N)
-    print(sieve_seq[18],sieve_seq[55],sieve_seq[83])
+        
     return sieve_seq
 
-def find_smooth(factor_base,N):
+def find_smooth(factor_base,N,sieve_int):
 # tries to B-smooth numbers in sieve_seq, using sieving
-    sieve_list = sieve_prep(N).copy() # the sieve list to be modified. We keep a copy of V for later
+    sieve_list = sieve_prep(N,sieve_int).copy() # the sieve list to be modified. We keep a copy of V for later
     
-    print(len(sieve_list))
-    print(str(sieve_list)+"\n")
+    #print(len(sieve_list),"\n",str(sieve_list))
     smooth_nums = []
 
     if 2 in factor_base:
@@ -147,18 +150,18 @@ def find_smooth(factor_base,N):
         while sieve_list[i] % 2 != 0:
             i += 1
         for j in range(i,len(sieve_list),2): # found the 1st even term, now every other term will also be even
-            sieve_list[j] /= 2
-        #print(sieve_list)
+            while sieve_list[j] % 2 == 0: #we have to account for prime powers
+                        sieve_list[j] //= 2
         
     for p in factor_base[1:]:
         residues = tonelli(N,p) #finds x such that x^2 = n (mod p). There are two start solutions except when p = 2
-        print(residues)
+        #print(residues)
         for r in residues: 
             for i in range((r-root)%p,len(sieve_list),p): # Now every pth term will also be divisible
-                    sieve_list[i] = sieve_list[i]/p
-                         
-    print(sieve_list)
-    print(sieve_list[18],sieve_list[55],sieve_list[83])
+                    while sieve_list[i] % p == 0: #we have to account for prime powers
+                        sieve_list[i] //= p
+                                     
+    #print(sieve_list)
     xlist = [] #original x terms
     for i in range(len(sieve_list)):
         if sieve_list[i] == 1: # found B-smooth number
@@ -174,8 +177,9 @@ def build_matrix(smooth_nums,factor_base):
     def factor(n,factor_base):#trial division from factor base
         factors = []
         for p in factor_base:
-            if n % p == 0:
+            while n % p == 0:
                 factors.append(p)
+                n //= p
         return factors
 
     for n in smooth_nums:
@@ -184,13 +188,19 @@ def build_matrix(smooth_nums,factor_base):
         print(n,n_factors)
         for i in range(len(factor_base)):
             if factor_base[i] in n_factors:
-                exp_vector[i] = (exp_vector[i]+1)%2
+                exp_vector[i] = (exp_vector[i]+n_factors.count(factor_base[i]))%2
 
         #print(n_factors, exp_vector)
+        if 1 in exp_vector: #search for squares
+            pass
+        else:
+            print("found a square!")
+            return True, n
         matrix.append(exp_vector)
-    print("Matrix built:" + str(matrix))
-
-    return(transpose(matrix))
+        
+    print("Matrix built:")
+    mprint(matrix)
+    return(False, transpose(matrix))
 
     
 def transpose(matrix):
@@ -203,14 +213,25 @@ def transpose(matrix):
         new_matrix.append(new_row)
     return(new_matrix)
 
-def gauss_elim(M):
+'''def optimize(M):
+    for row in M: #matrix optimization; delete factors that only occur once
+        if row.count(1) == 1:
+            for r in M:
+                del r[row.index(1)]
+            del row
+
+    return(M)'''
+        
+def gauss_elim(M,K=0):
 #reduced form of gaussian elimination, finds rref and reads off the nullspace
 #https://www.cs.umd.edu/~gasarch/TOPICS/factoring/fastgauss.pdf
+    #mprint(M)
+    #M = optimize(M)
     marks = [False]*len(M[0])
     
     for i in range(len(M)): #do for all rows
         row = M[i]
-        print(row)
+        #print(row)
         for num in row: #search for pivot
             if num == 1:
                 print("found pivot at column " + str(row.index(num)+1))
@@ -218,57 +239,63 @@ def gauss_elim(M):
                 marks[j] = True 
                 for k in chain(range(0,i),range(i+1,len(M))): #search for other 1s in the same column
                     if M[k][j] == 1:
-                        for i in range(len(M[k])): M[k][i] = (M[k][i] + row[i])%2
-                        print(M)
+                        for i in range(len(M[k])):
+                            M[k][i] = (M[k][i] + row[i])%2
+                #mprint(M)
                 break
     print(marks)
-    
-    #find dependent vectors to combine    
     M = transpose(M)
-    print(M)
+    #mprint(M)
+    
     free_rows = []
-    for i in marks: #find free columns (which have now become rows)
-        if i == False:
-            free_rows.append(M[marks.index(i)])
-    print(free_rows)
-
+    free_rows_i = []
+    for i in range(len(marks)): #find free columns (which have now become rows)
+        if marks[i]== False:
+            free_rows.append(M[i])
+            free_rows_i.append(i)
+    print("Free rows: " + str(free_rows))
+    
     solution_vec = []
     indices = []
-    free_row = free_rows[0]
+    free_row = free_rows[K] # multiple choices here
     for i in range(len(free_row)):
         if free_row[i] == 1: #rows with 1 in the same column will be dependent
             indices.append(i)
-    for row in M:
+    
+    for r in range(len(M)):
+        #print(M[r])
         for i in indices:
-            if row[i] == 1:
-                solution_vec.append(M.index(row))
+            if M[r][i] == 1 and marks[r]:
+                solution_vec.append(r)
                 break
-            
+    print("Found linear dependencies at rows "+ str(solution_vec))     
+    solution_vec.append(free_rows_i[K])
+    print(solution_vec)       
     return(solution_vec)
     
 def solve(solution_vec,smooth_nums,xlist,N):
     
     solution_nums = [smooth_nums[i] for i in solution_vec]
-    print(solution_nums)
-
+    x_nums = [xlist[i] for i in solution_vec]
+    print(solution_nums,x_nums)
+    
     Asquare = 1
     for n in solution_nums:
         Asquare *= n
 
     Bsquare = 1
-    for n in xlist:
+    for n in x_nums:
         Bsquare *= n**2
 
-    print(str(Asquare)+" = "+str(Bsquare)+" mod "+str(N))
     a = sqrt(Asquare)
     b = sqrt(Bsquare)
-    print(a,b)
+    print(str(a)+"^2 = "+str(b)+"^2 mod "+str(N))
     
     factor = gcd(fabs(b-a),N)
-    
-    print("Found factors! " + str(int(factor)) + ", " + str(int(N/factor)))
+    return factor
 
-def QS(n,P):
+
+def QS(n,P,sieve_int):
 #single polynomial version of quadratic sieve, up to the first P primes
     
     global N
@@ -284,21 +311,38 @@ def QS(n,P):
     print(factor_base)
 
     B = factor_base[-1]
-    print("Looking for {} {}-smooth relations...".format(len(factor_base)+1,B))
-    smooth_nums,xlist = find_smooth(factor_base, N) #finds B-smooth relations, using sieving and Tonelli-Shanks
-    print("Found {} smooth numbers.".format(len(smooth_nums)))
-    print(smooth_nums)
-    if len(smooth_nums) == 0:
+    print("Looking for {} {}-smooth relations...".format(P+1,B))
+    smooth_nums,xlist = find_smooth(factor_base, N,sieve_int)
+    #finds B-smooth relations, using sieving and Tonelli-Shanks
+    print("Found {} smooth relations.".format(len(smooth_nums)))
+    print(xlist,smooth_nums)
+    if len(smooth_nums) < len(factor_base)-1:
         print("Not enough smooth numbers. Increase the sieve interval or size of the factor base.")
-        quit()
+        sys.exit()
     
     print("Building exponent matrix...")
-    matrix = build_matrix(smooth_nums,factor_base) #builds exponent matrix mod 2 from relations
-
+    
+    is_square, matrix = build_matrix(smooth_nums,factor_base) #builds exponent matrix mod 2 from relations
+    if is_square == True:
+        x = smooth_nums.index(matrix)
+        factor = gcd(xlist[x]+sqrt(matrix),N)
+        print("Found factors! " + str(int(factor)) + ", " + str(int(N/factor)))
+        sys.exit()
+    
     print("Performing Gaussian Elimination...")
-    solution_vec = gauss_elim(matrix) #solves the matrix for the null space, finds perfect squares
-    print("Solution vector found: " + str(solution_vec))
-    print("Solving congruence of squares...")
-    solve(solution_vec,smooth_nums,xlist,N) #solves the congruence of squares to obtain factors
+    solution_vec = gauss_elim(matrix,0) #solves the matrix for the null space, finds perfect square
 
-  
+    vec = [0]*len(smooth_nums)
+    for i in solution_vec:
+        vec[i] = 1
+    print("Solution vector found: " + str(vec))
+    
+    print("Solving congruence of squares...")
+    factor = solve(solution_vec,smooth_nums,xlist,N) #solves the congruence of squares to obtain factors
+
+    '''if factor == 1 or N:
+        find_dep_vecs(marks,M,1)
+        solve(solution_vec,smooth_nums,xlist,N)'''
+        
+    print("Found factors! " + str(int(factor)) + ", " + str(int(N/factor)))
+    
