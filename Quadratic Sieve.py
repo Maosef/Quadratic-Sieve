@@ -1,6 +1,5 @@
 from math import fabs, ceil, sqrt, exp, log
 import random
-from Factor import brent
 from MillerRabin import is_probable_prime
 from itertools import chain
 
