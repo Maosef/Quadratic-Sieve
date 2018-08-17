@@ -3,8 +3,13 @@ Python code for the single-polynomial version of Quadratic Sieve, no bells or wh
 
 Todo:
 Implement Numpy
+
+Add data analysis tools
+
 Implement Cython
+
 Implement Multiple Polynomials
+
 Implement General Number Field Sieve (eventually...)
 
 This is a self-pursued project. Over time I will further clean up and optimize the algorithm, and I'll probably implement the multiple polynomial version soon.
